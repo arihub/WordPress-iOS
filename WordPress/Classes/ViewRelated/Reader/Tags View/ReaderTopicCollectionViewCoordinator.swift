@@ -1,5 +1,101 @@
 import UIKit
 
+extension String {
+    func bkdrHash(seed: UInt64 = 100, seed2: UInt64 = 200) -> UInt64 {
+        return UInt64(abs(self.hashValue))
+
+//        var hash: UInt64 = 0;
+//
+//        var str = self
+//        str += "x"
+//
+//        str.forEach { (char) in
+//            if let code = char.asciiValue {
+//                if hash >= UInt64.max / seed2 {
+//                    hash = hash / seed2
+//                } else {
+//                    hash = hash * seed + UInt64(code)
+//                }
+//            }
+//        }
+//
+//        return hash
+    }
+}
+
+struct ColorRange {
+    var min: UInt64 = 0
+    var max: UInt64 = 360
+
+    func randomValue() -> UInt64 {
+        let meow = UInt64.random(in: min...max)
+        return meow
+    }
+}
+
+class ColorHash {
+    var lightnessRange: ColorRange = ColorRange(min: 70, max: 90)
+    var saturationRange: ColorRange = ColorRange(min: 70, max: 99)
+    let hueRange: ColorRange = ColorRange(min: 0, max: 340)
+
+    let brandColors = ["wordpress": UIColor.colorFromHex("0573AB"),
+                       "google": UIColor.colorFromHex("0F9D58"),
+                       "automattic": UIColor.colorFromHex("3499CD"),
+                       "a8c": UIColor.colorFromHex("3499CD"),
+    ]
+
+    func generateColor(string: String) -> UIColor {
+        if let meow = brandColors[string.lowercased()] {
+            return meow
+        }
+
+        let hash = string.bkdrHash()
+
+        let seed: UInt64 = 727
+        let seed1: UInt64 = 300
+        let seed2: UInt64 = 123
+
+        let hue = CGFloat((hash % seed) * (hueRange.max - hueRange.min) / seed + hueRange.min) / 360.0
+        let saturation = CGFloat((hash % seed1) * (saturationRange.max - saturationRange.min) / seed1 + saturationRange.min) / 100.0
+        let lightness = CGFloat((hash % seed2) * (lightnessRange.max - lightnessRange.min) / seed2 + lightnessRange.min) / 100.0
+
+//        print(string, hash, hue, saturation, lightness)
+        return UIColor(hue: hue, saturation: saturation, brightness: lightness, alpha: 1)
+    }
+}
+
+extension UIColor {
+
+    static func contrastRatio(between color1: UIColor, and color2: UIColor) -> CGFloat {
+        // https://www.w3.org/TR/WCAG20-TECHS/G18.html#G18-tests
+
+        let luminance1 = color1.luminance()
+        let luminance2 = color2.luminance()
+
+        let luminanceDarker = min(luminance1, luminance2)
+        let luminanceLighter = max(luminance1, luminance2)
+
+        return (luminanceLighter + 0.05) / (luminanceDarker + 0.05)
+    }
+
+    func contrastRatio(with color: UIColor) -> CGFloat {
+        return UIColor.contrastRatio(between: self, and: color)
+    }
+
+    func luminance() -> CGFloat {
+        // https://www.w3.org/TR/WCAG20-TECHS/G18.html#G18-tests
+
+        let ciColor = CIColor(color: self)
+
+        func adjust(colorComponent: CGFloat) -> CGFloat {
+            return (colorComponent < 0.04045) ? (colorComponent / 12.92) : pow((colorComponent + 0.055) / 1.055, 2.4)
+        }
+
+        return 0.2126 * adjust(colorComponent: ciColor.red) + 0.7152 * adjust(colorComponent: ciColor.green) + 0.0722 * adjust(colorComponent: ciColor.blue)
+    }
+}
+
+
 enum ReaderTopicCollectionViewState {
     case collapsed
     case expanded
@@ -116,11 +212,23 @@ class ReaderTopicCollectionViewCoordinator: NSObject {
         return size
     }
 
-    private func configure(cell: ReaderInterestsCollectionViewCell, with title: String) {
+    private func configure(cell: ReaderInterestsCollectionViewCell, with title: String, isMeow: Bool = false) {
         ReaderInterestsStyleGuide.applyCompactCellLabelStyle(label: cell.label)
 
         cell.layer.cornerRadius = Constants.cellCornerRadius
         cell.label.text = title
+
+        guard !isMeow else {
+            return
+        }
+
+
+        let colorHash = ColorHash()
+        let color = colorHash.generateColor(string: title)
+        let titleContrast = color.contrastRatio(with: .text)
+
+        cell.label.textColor = .white
+        cell.backgroundColor = color
     }
 
     private func string(for remainingItems: Int?) -> String {
@@ -169,7 +277,8 @@ extension ReaderTopicCollectionViewCoordinator: UICollectionViewDelegateFlowLayo
         let remainingItems = layout.remainingItems
         let title = string(for: remainingItems)
 
-        configure(cell: cell, with: title)
+        configure(cell: cell, with: title, isMeow: true)
+
 
         let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(toggleExpanded))
         cell.addGestureRecognizer(tapGestureRecognizer)
